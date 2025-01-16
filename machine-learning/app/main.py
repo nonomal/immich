@@ -12,7 +12,7 @@ from zipfile import BadZipFile
 
 import orjson
 from fastapi import Depends, FastAPI, File, Form, HTTPException
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import ORJSONResponse, PlainTextResponse
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf, NoSuchFile
 from PIL.Image import Image
 from pydantic import ValidationError
@@ -28,14 +28,12 @@ from .schemas import (
     InferenceEntries,
     InferenceEntry,
     InferenceResponse,
-    MessageResponse,
     ModelFormat,
     ModelIdentity,
     ModelTask,
     ModelType,
     PipelineRequest,
     T,
-    TextResponse,
 )
 
 MultiPartParser.max_file_size = 2**26  # spools to disk if payload is 64 MiB or larger
@@ -78,18 +76,29 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
 
 async def preload_models(preload: PreloadModelData) -> None:
     log.info(f"Preloading models: {preload}")
-    if preload.clip is not None:
-        model = await model_cache.get(preload.clip, ModelType.TEXTUAL, ModelTask.SEARCH)
+
+    if preload.clip.textual is not None:
+        model = await model_cache.get(preload.clip.textual, ModelType.TEXTUAL, ModelTask.SEARCH)
         await load(model)
 
-        model = await model_cache.get(preload.clip, ModelType.VISUAL, ModelTask.SEARCH)
+    if preload.clip.visual is not None:
+        model = await model_cache.get(preload.clip.visual, ModelType.VISUAL, ModelTask.SEARCH)
         await load(model)
 
-    if preload.facial_recognition is not None:
-        model = await model_cache.get(preload.facial_recognition, ModelType.DETECTION, ModelTask.FACIAL_RECOGNITION)
+    if preload.facial_recognition.detection is not None:
+        model = await model_cache.get(
+            preload.facial_recognition.detection,
+            ModelType.DETECTION,
+            ModelTask.FACIAL_RECOGNITION,
+        )
         await load(model)
 
-        model = await model_cache.get(preload.facial_recognition, ModelType.RECOGNITION, ModelTask.FACIAL_RECOGNITION)
+    if preload.facial_recognition.recognition is not None:
+        model = await model_cache.get(
+            preload.facial_recognition.recognition,
+            ModelType.RECOGNITION,
+            ModelTask.FACIAL_RECOGNITION,
+        )
         await load(model)
 
 
@@ -127,14 +136,14 @@ def get_entries(entries: str = Form()) -> InferenceEntries:
 app = FastAPI(lifespan=lifespan)
 
 
-@app.get("/", response_model=MessageResponse)
-async def root() -> dict[str, str]:
-    return {"message": "Immich ML"}
+@app.get("/")
+async def root() -> ORJSONResponse:
+    return ORJSONResponse({"message": "Immich ML"})
 
 
-@app.get("/ping", response_model=TextResponse)
-def ping() -> str:
-    return "pong"
+@app.get("/ping")
+def ping() -> PlainTextResponse:
+    return PlainTextResponse("pong")
 
 
 @app.post("/predict", dependencies=[Depends(update_state)])
