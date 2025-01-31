@@ -67,7 +67,7 @@ class AssetBulkUpdateDto {
   ///
   num? longitude;
 
-  /// Minimum value: 0
+  /// Minimum value: -1
   /// Maximum value: 5
   ///
   /// Please note: This property should have been non-nullable! Since the specification file
@@ -148,6 +148,7 @@ class AssetBulkUpdateDto {
   /// [value] if it's a [Map], null otherwise.
   // ignore: prefer_constructors_over_static_methods
   static AssetBulkUpdateDto? fromJson(dynamic value) {
+    upgradeDto(value, "AssetBulkUpdateDto");
     if (value is Map) {
       final json = value.cast<String, dynamic>();
 

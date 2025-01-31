@@ -1,21 +1,77 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DefaultReadTaskOptions, ExifTool, Tags } from 'exiftool-vendored';
+import { Injectable } from '@nestjs/common';
+import { BinaryField, DefaultReadTaskOptions, ExifTool, Tags } from 'exiftool-vendored';
 import geotz from 'geo-tz';
-import { DummyValue, GenerateSql } from 'src/decorators';
-import { ExifEntity } from 'src/entities/exif.entity';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import { IMetadataRepository, ImmichTags } from 'src/interfaces/metadata.interface';
-import { Instrumentation } from 'src/utils/instrumentation';
-import { Repository } from 'typeorm';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 
-@Instrumentation()
+interface ExifDuration {
+  Value: number;
+  Scale?: number;
+}
+
+type StringOrNumber = string | number;
+
+type TagsWithWrongTypes =
+  | 'FocalLength'
+  | 'Duration'
+  | 'Description'
+  | 'ImageDescription'
+  | 'RegionInfo'
+  | 'TagsList'
+  | 'Keywords'
+  | 'HierarchicalSubject'
+  | 'ISO';
+
+export interface ImmichTags extends Omit<Tags, TagsWithWrongTypes> {
+  ContentIdentifier?: string;
+  MotionPhoto?: number;
+  MotionPhotoVersion?: number;
+  MotionPhotoPresentationTimestampUs?: number;
+  MediaGroupUUID?: string;
+  ImagePixelDepth?: string;
+  FocalLength?: number;
+  Duration?: number | string | ExifDuration;
+  EmbeddedVideoType?: string;
+  EmbeddedVideoFile?: BinaryField;
+  MotionPhotoVideo?: BinaryField;
+  TagsList?: StringOrNumber[];
+  HierarchicalSubject?: StringOrNumber[];
+  Keywords?: StringOrNumber | StringOrNumber[];
+  ISO?: number | number[];
+
+  // Type is wrong, can also be number.
+  Description?: StringOrNumber;
+  ImageDescription?: StringOrNumber;
+
+  // Extended properties for image regions, such as faces
+  RegionInfo?: {
+    AppliedToDimensions: {
+      W: number;
+      H: number;
+      Unit: string;
+    };
+    RegionList: {
+      Area: {
+        // (X,Y) // center of the rectangle
+        X: number;
+        Y: number;
+        W: number;
+        H: number;
+        Unit: string;
+      };
+      Rotation?: number;
+      Type?: string;
+      Name?: string;
+    }[];
+  };
+}
+
 @Injectable()
-export class MetadataRepository implements IMetadataRepository {
+export class MetadataRepository {
   private exiftool = new ExifTool({
     defaultVideosToUTC: true,
     backfillTimezones: true,
     inferTimezoneFromDatestamps: true,
+    inferTimezoneFromTimeStamp: true,
     useMWG: true,
     numericTags: [...DefaultReadTaskOptions.numericTags, 'FocalLength'],
     /* eslint unicorn/no-array-callback-reference: off, unicorn/no-array-method-this-argument: off */
@@ -25,10 +81,7 @@ export class MetadataRepository implements IMetadataRepository {
     writeArgs: ['-api', 'largefilesupport=1', '-overwrite_original'],
   });
 
-  constructor(
-    @InjectRepository(ExifEntity) private exifRepository: Repository<ExifEntity>,
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
-  ) {
+  constructor(private logger: LoggingRepository) {
     this.logger.setContext(MetadataRepository.name);
   }
 
@@ -53,92 +106,5 @@ export class MetadataRepository implements IMetadataRepository {
     } catch (error) {
       this.logger.warn(`Error writing exif data (${path}): ${error}`);
     }
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID] })
-  async getCountries(userIds: string[]): Promise<string[]> {
-    const results = await this.exifRepository
-      .createQueryBuilder('exif')
-      .leftJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .select('exif.country', 'country')
-      .distinctOn(['exif.country'])
-      .getRawMany<{ country: string }>();
-
-    return results.map(({ country }) => country).filter((item) => item !== '');
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
-  async getStates(userIds: string[], country: string | undefined): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .leftJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .select('exif.state', 'state')
-      .distinctOn(['exif.state']);
-
-    if (country) {
-      query.andWhere('exif.country = :country', { country });
-    }
-
-    const result = await query.getRawMany<{ state: string }>();
-
-    return result.map(({ state }) => state).filter((item) => item !== '');
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING, DummyValue.STRING] })
-  async getCities(userIds: string[], country: string | undefined, state: string | undefined): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .leftJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .select('exif.city', 'city')
-      .distinctOn(['exif.city']);
-
-    if (country) {
-      query.andWhere('exif.country = :country', { country });
-    }
-
-    if (state) {
-      query.andWhere('exif.state = :state', { state });
-    }
-
-    const results = await query.getRawMany<{ city: string }>();
-
-    return results.map(({ city }) => city).filter((item) => item !== '');
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
-  async getCameraMakes(userIds: string[], model: string | undefined): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .leftJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .select('exif.make', 'make')
-      .distinctOn(['exif.make']);
-
-    if (model) {
-      query.andWhere('exif.model = :model', { model });
-    }
-
-    const results = await query.getRawMany<{ make: string }>();
-    return results.map(({ make }) => make).filter((item) => item !== '');
-  }
-
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
-  async getCameraModels(userIds: string[], make: string | undefined): Promise<string[]> {
-    const query = this.exifRepository
-      .createQueryBuilder('exif')
-      .leftJoin('exif.asset', 'asset')
-      .where('asset.ownerId IN (:...userIds )', { userIds })
-      .select('exif.model', 'model')
-      .distinctOn(['exif.model']);
-
-    if (make) {
-      query.andWhere('exif.make = :make', { make });
-    }
-
-    const results = await query.getRawMany<{ model: string }>();
-    return results.map(({ model }) => model).filter((item) => item !== '');
   }
 }

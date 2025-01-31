@@ -1,31 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
-import { ImageFormat } from 'src/config';
 import { APP_MEDIA_LOCATION } from 'src/constants';
-import { SystemConfigCore } from 'src/cores/system-config.core';
 import { AssetEntity } from 'src/entities/asset.entity';
-import { AssetPathType, PathType, PersonPathType } from 'src/entities/move.entity';
 import { PersonEntity } from 'src/entities/person.entity';
-import { AssetFileType } from 'src/enum';
+import { AssetFileType, AssetPathType, ImageFormat, PathType, PersonPathType, StorageFolder } from 'src/enum';
 import { IAssetRepository } from 'src/interfaces/asset.interface';
 import { ICryptoRepository } from 'src/interfaces/crypto.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
 import { IMoveRepository } from 'src/interfaces/move.interface';
 import { IPersonRepository } from 'src/interfaces/person.interface';
 import { IStorageRepository } from 'src/interfaces/storage.interface';
 import { ISystemMetadataRepository } from 'src/interfaces/system-metadata.interface';
+import { IConfigRepository, ILoggingRepository } from 'src/types';
 import { getAssetFiles } from 'src/utils/asset.util';
-
-export enum StorageFolder {
-  ENCODED_VIDEO = 'encoded-video',
-  LIBRARY = 'library',
-  UPLOAD = 'upload',
-  PROFILE = 'profile',
-  THUMBNAILS = 'thumbs',
-}
-
-export const THUMBNAIL_DIR = resolve(join(APP_MEDIA_LOCATION, StorageFolder.THUMBNAILS));
-export const ENCODED_VIDEO_DIR = resolve(join(APP_MEDIA_LOCATION, StorageFolder.ENCODED_VIDEO));
+import { getConfig } from 'src/utils/config';
 
 export interface MoveRequest {
   entityId: string;
@@ -44,31 +31,31 @@ export type GeneratedAssetType = GeneratedImageType | AssetPathType.ENCODED_VIDE
 let instance: StorageCore | null;
 
 export class StorageCore {
-  private configCore;
   private constructor(
     private assetRepository: IAssetRepository,
+    private configRepository: IConfigRepository,
     private cryptoRepository: ICryptoRepository,
     private moveRepository: IMoveRepository,
     private personRepository: IPersonRepository,
     private storageRepository: IStorageRepository,
-    systemMetadataRepository: ISystemMetadataRepository,
-    private logger: ILoggerRepository,
-  ) {
-    this.configCore = SystemConfigCore.create(systemMetadataRepository, this.logger);
-  }
+    private systemMetadataRepository: ISystemMetadataRepository,
+    private logger: ILoggingRepository,
+  ) {}
 
   static create(
     assetRepository: IAssetRepository,
+    configRepository: IConfigRepository,
     cryptoRepository: ICryptoRepository,
     moveRepository: IMoveRepository,
     personRepository: IPersonRepository,
     storageRepository: IStorageRepository,
     systemMetadataRepository: ISystemMetadataRepository,
-    logger: ILoggerRepository,
+    logger: ILoggingRepository,
   ) {
     if (!instance) {
       instance = new StorageCore(
         assetRepository,
+        configRepository,
         cryptoRepository,
         moveRepository,
         personRepository,
@@ -125,10 +112,6 @@ export class StorageCore {
       ? resolvedAppMediaLocation
       : resolvedAppMediaLocation + '/';
     return normalizedPath.startsWith(normalizedAppMediaLocation);
-  }
-
-  static isGeneratedAsset(path: string) {
-    return path.startsWith(THUMBNAIL_DIR) || path.startsWith(ENCODED_VIDEO_DIR);
   }
 
   async moveAssetImage(asset: AssetEntity, pathType: GeneratedImageType, format: ImageFormat) {
@@ -199,7 +182,7 @@ export class StorageCore {
         return;
       }
 
-      move = await this.moveRepository.update({ id: move.id, oldPath: actualPath, newPath });
+      move = await this.moveRepository.update(move.id, { id: move.id, oldPath: actualPath, newPath });
     } else {
       move = await this.moveRepository.create({ entityId, pathType, oldPath, newPath });
     }
@@ -241,7 +224,7 @@ export class StorageCore {
     }
 
     await this.savePath(pathType, entityId, newPath);
-    await this.moveRepository.delete(move);
+    await this.moveRepository.delete(move.id);
   }
 
   private async verifyNewPathContentsMatchesExpected(
@@ -258,7 +241,12 @@ export class StorageCore {
       this.logger.warn(`Unable to complete move. File size mismatch: ${newPathSize} !== ${oldPathSize}`);
       return false;
     }
-    const config = await this.configCore.getConfig({ withCache: true });
+    const repos = {
+      configRepo: this.configRepository,
+      metadataRepo: this.systemMetadataRepository,
+      logger: this.logger,
+    };
+    const config = await getConfig(repos, { withCache: true });
     if (assetInfo && config.storageTemplate.hashVerificationEnabled) {
       const { checksum } = assetInfo;
       const newChecksum = await this.cryptoRepository.hashFile(newPath);
@@ -301,7 +289,7 @@ export class StorageCore {
         return this.assetRepository.update({ id, sidecarPath: newPath });
       }
       case PersonPathType.FACE: {
-        return this.personRepository.update([{ id, thumbnailPath: newPath }]);
+        return this.personRepository.update({ id, thumbnailPath: newPath });
       }
     }
   }
