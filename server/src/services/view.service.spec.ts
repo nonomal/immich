@@ -1,21 +1,15 @@
 import { mapAsset } from 'src/dtos/asset-response.dto';
-import { IAssetRepository } from 'src/interfaces/asset.interface';
-
 import { ViewService } from 'src/services/view.service';
 import { assetStub } from 'test/fixtures/asset.stub';
 import { authStub } from 'test/fixtures/auth.stub';
-import { newAssetRepositoryMock } from 'test/repositories/asset.repository.mock';
-
-import { Mocked } from 'vitest';
+import { newTestService, ServiceMocks } from 'test/utils';
 
 describe(ViewService.name, () => {
   let sut: ViewService;
-  let assetMock: Mocked<IAssetRepository>;
+  let mocks: ServiceMocks;
 
   beforeEach(() => {
-    assetMock = newAssetRepositoryMock();
-
-    sut = new ViewService(assetMock);
+    ({ sut, mocks } = newTestService(ViewService));
   });
 
   it('should work', () => {
@@ -25,12 +19,12 @@ describe(ViewService.name, () => {
   describe('getUniqueOriginalPaths', () => {
     it('should return unique original paths', async () => {
       const mockPaths = ['path1', 'path2', 'path3'];
-      assetMock.getUniqueOriginalPaths.mockResolvedValue(mockPaths);
+      mocks.view.getUniqueOriginalPaths.mockResolvedValue(mockPaths);
 
       const result = await sut.getUniqueOriginalPaths(authStub.admin);
 
       expect(result).toEqual(mockPaths);
-      expect(assetMock.getUniqueOriginalPaths).toHaveBeenCalledWith(authStub.admin.user.id);
+      expect(mocks.view.getUniqueOriginalPaths).toHaveBeenCalledWith(authStub.admin.user.id);
     });
   });
 
@@ -45,11 +39,11 @@ describe(ViewService.name, () => {
 
       const mockAssetReponseDto = mockAssets.map((a) => mapAsset(a, { auth: authStub.admin }));
 
-      assetMock.getAssetsByOriginalPath.mockResolvedValue(mockAssets);
+      mocks.view.getAssetsByOriginalPath.mockResolvedValue(mockAssets as any);
 
       const result = await sut.getAssetsByOriginalPath(authStub.admin, path);
       expect(result).toEqual(mockAssetReponseDto);
-      await expect(assetMock.getAssetsByOriginalPath(authStub.admin.user.id, path)).resolves.toEqual(mockAssets);
+      await expect(mocks.view.getAssetsByOriginalPath(authStub.admin.user.id, path)).resolves.toEqual(mockAssets);
     });
   });
 });

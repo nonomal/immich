@@ -1,42 +1,44 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import ConfirmDialog from '$lib/components/shared-components/dialog/confirm-dialog.svelte';
   import DeleteConfirmDialog from '$lib/components/admin-page/delete-confirm-dialogue.svelte';
   import RestoreDialogue from '$lib/components/admin-page/restore-dialogue.svelte';
-  import Button from '$lib/components/elements/buttons/button.svelte';
-  import CircleIconButton from '$lib/components/elements/buttons/circle-icon-button.svelte';
-  import LinkButton from '$lib/components/elements/buttons/link-button.svelte';
   import Icon from '$lib/components/elements/icon.svelte';
   import CreateUserForm from '$lib/components/forms/create-user-form.svelte';
   import EditUserForm from '$lib/components/forms/edit-user-form.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
+  import ConfirmDialog from '$lib/components/shared-components/dialog/confirm-dialog.svelte';
   import {
     NotificationType,
     notificationController,
   } from '$lib/components/shared-components/notification/notification';
   import { locale } from '$lib/stores/preferences.store';
-  import { serverConfig } from '$lib/stores/server-config.store';
+  import { featureFlags, serverConfig } from '$lib/stores/server-config.store';
   import { user } from '$lib/stores/user.store';
   import { websocketEvents } from '$lib/stores/websocket';
   import { copyToClipboard } from '$lib/utils';
   import { getByteUnitString } from '$lib/utils/byte-units';
   import { UserStatus, searchUsersAdmin, type UserAdminResponseDto } from '@immich/sdk';
-  import { mdiInfinity, mdiContentCopy, mdiDeleteRestore, mdiPencilOutline, mdiTrashCanOutline } from '@mdi/js';
+  import { Button, Code, IconButton, Text } from '@immich/ui';
+  import { mdiContentCopy, mdiDeleteRestore, mdiInfinity, mdiPencilOutline, mdiTrashCanOutline } from '@mdi/js';
   import { DateTime } from 'luxon';
   import { onMount } from 'svelte';
-  import type { PageData } from './$types';
   import { t } from 'svelte-i18n';
+  import type { PageData } from './$types';
 
-  export let data: PageData;
+  interface Props {
+    data: PageData;
+  }
 
-  let allUsers: UserAdminResponseDto[] = [];
-  let shouldShowEditUserForm = false;
-  let shouldShowCreateUserForm = false;
-  let shouldShowPasswordResetSuccess = false;
-  let shouldShowDeleteConfirmDialog = false;
-  let shouldShowRestoreDialog = false;
-  let selectedUser: UserAdminResponseDto;
-  let newPassword: string;
+  let { data }: Props = $props();
+
+  let allUsers: UserAdminResponseDto[] = $state([]);
+  let shouldShowEditUserForm = $state(false);
+  let shouldShowCreateUserForm = $state(false);
+  let shouldShowPasswordResetSuccess = $state(false);
+  let shouldShowDeleteConfirmDialog = $state(false);
+  let shouldShowRestoreDialog = $state(false);
+  let selectedUser = $state<UserAdminResponseDto>();
+  let newPassword = $state('');
 
   const refresh = async () => {
     allUsers = await searchUsersAdmin({ withDeleted: true });
@@ -110,38 +112,39 @@
     <section class="w-full pb-28 lg:w-[850px]">
       {#if shouldShowCreateUserForm}
         <CreateUserForm
-          on:submit={onUserCreated}
-          on:cancel={() => (shouldShowCreateUserForm = false)}
+          onSubmit={onUserCreated}
+          onCancel={() => (shouldShowCreateUserForm = false)}
           onClose={() => (shouldShowCreateUserForm = false)}
+          oauthEnabled={$featureFlags.oauth}
         />
       {/if}
 
-      {#if shouldShowEditUserForm}
+      {#if shouldShowEditUserForm && selectedUser}
         <EditUserForm
           user={selectedUser}
           bind:newPassword
           canResetPassword={selectedUser?.id !== $user.id}
-          on:editSuccess={onEditUserSuccess}
-          on:resetPasswordSuccess={onEditPasswordSuccess}
+          onEditSuccess={onEditUserSuccess}
+          onResetPasswordSuccess={onEditPasswordSuccess}
           onClose={() => (shouldShowEditUserForm = false)}
         />
       {/if}
 
-      {#if shouldShowDeleteConfirmDialog}
+      {#if shouldShowDeleteConfirmDialog && selectedUser}
         <DeleteConfirmDialog
           user={selectedUser}
-          on:success={onUserDelete}
-          on:fail={onUserDelete}
-          on:cancel={() => (shouldShowDeleteConfirmDialog = false)}
+          onSuccess={onUserDelete}
+          onFail={onUserDelete}
+          onCancel={() => (shouldShowDeleteConfirmDialog = false)}
         />
       {/if}
 
-      {#if shouldShowRestoreDialog}
+      {#if shouldShowRestoreDialog && selectedUser}
         <RestoreDialogue
           user={selectedUser}
-          on:success={onUserRestore}
-          on:fail={onUserRestore}
-          on:cancel={() => (shouldShowRestoreDialog = false)}
+          onSuccess={onUserRestore}
+          onFail={onUserRestore}
+          onCancel={() => (shouldShowRestoreDialog = false)}
         />
       {/if}
 
@@ -154,26 +157,26 @@
           hideCancelButton={true}
           confirmColor="green"
         >
-          <svelte:fragment slot="prompt">
+          {#snippet promptSnippet()}
             <div class="flex flex-col gap-4">
-              <p>{$t('admin.user_password_has_been_reset')}</p>
+              <Text>{$t('admin.user_password_has_been_reset')}</Text>
 
-              <div class="flex justify-center gap-2">
-                <code
-                  class="rounded-md bg-gray-200 px-2 py-1 font-bold text-immich-primary dark:text-immich-dark-primary dark:bg-gray-700"
-                >
-                  {newPassword}
-                </code>
-                <LinkButton on:click={() => copyToClipboard(newPassword)} title={$t('copy_password')}>
-                  <div class="flex place-items-center gap-2 text-sm">
-                    <Icon path={mdiContentCopy} size="18" />
-                  </div>
-                </LinkButton>
+              <div class="flex justify-center gap-2 items-center">
+                <Code color="primary">{newPassword}</Code>
+                <IconButton
+                  icon={mdiContentCopy}
+                  shape="round"
+                  color="secondary"
+                  variant="ghost"
+                  onclick={() => copyToClipboard(newPassword)}
+                  title={$t('copy_password')}
+                  aria-label={$t('copy_password')}
+                />
               </div>
 
-              <p>{$t('admin.user_password_reset_description')}</p>
+              <Text>{$t('admin.user_password_reset_description')}</Text>
             </div>
-          </svelte:fragment>
+          {/snippet}
         </ConfirmDialog>
       {/if}
 
@@ -217,32 +220,35 @@
                   class="flex flex-row flex-wrap justify-center gap-x-2 gap-y-1 w-4/12 lg:w-3/12 xl:w-2/12 text-ellipsis break-all text-sm"
                 >
                   {#if !immichUser.deletedAt}
-                    <CircleIconButton
+                    <IconButton
+                      shape="round"
+                      size="large"
                       icon={mdiPencilOutline}
                       title={$t('edit_user')}
-                      color="primary"
-                      size="16"
-                      on:click={() => editUserHandler(immichUser)}
+                      onclick={() => editUserHandler(immichUser)}
+                      aria-label={$t('edit_user')}
                     />
                     {#if immichUser.id !== $user.id}
-                      <CircleIconButton
+                      <IconButton
+                        shape="round"
+                        size="large"
                         icon={mdiTrashCanOutline}
                         title={$t('delete_user')}
-                        color="primary"
-                        size="16"
-                        on:click={() => deleteUserHandler(immichUser)}
+                        onclick={() => deleteUserHandler(immichUser)}
+                        aria-label={$t('delete_user')}
                       />
                     {/if}
                   {/if}
                   {#if immichUser.deletedAt && immichUser.status === UserStatus.Deleted}
-                    <CircleIconButton
+                    <IconButton
+                      shape="round"
+                      size="large"
                       icon={mdiDeleteRestore}
                       title={$t('admin.user_restore_scheduled_removal', {
                         values: { date: getDeleteDate(immichUser.deletedAt) },
                       })}
-                      color="primary"
-                      size="16"
-                      on:click={() => restoreUserHandler(immichUser)}
+                      onclick={() => restoreUserHandler(immichUser)}
+                      aria-label={$t('admin.user_restore_scheduled_removal')}
                     />
                   {/if}
                 </td>
@@ -251,8 +257,7 @@
           {/if}
         </tbody>
       </table>
-
-      <Button size="sm" on:click={() => (shouldShowCreateUserForm = true)}>{$t('create_user')}</Button>
+      <Button shape="round" size="small" onclick={() => (shouldShowCreateUserForm = true)}>{$t('create_user')}</Button>
     </section>
   </section>
 </UserPageLayout>

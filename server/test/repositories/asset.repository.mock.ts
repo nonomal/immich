@@ -1,7 +1,8 @@
-import { IAssetRepository } from 'src/interfaces/asset.interface';
+import { AssetRepository } from 'src/repositories/asset.repository';
+import { RepositoryInterface } from 'src/types';
 import { Mocked, vitest } from 'vitest';
 
-export const newAssetRepositoryMock = (): Mocked<IAssetRepository> => {
+export const newAssetRepositoryMock = (): Mocked<RepositoryInterface<AssetRepository>> => {
   return {
     create: vitest.fn(),
     upsertExif: vitest.fn(),
@@ -17,16 +18,13 @@ export const newAssetRepositoryMock = (): Mocked<IAssetRepository> => {
     getByChecksum: vitest.fn(),
     getByChecksums: vitest.fn(),
     getUploadAssetIdByChecksum: vitest.fn(),
-    getWith: vitest.fn(),
     getRandom: vitest.fn(),
-    getFirstAssetForAlbumId: vitest.fn(),
     getLastUpdatedAssetForAlbumId: vitest.fn(),
     getAll: vitest.fn().mockResolvedValue({ items: [], hasNextPage: false }),
     getAllByDeviceId: vitest.fn(),
     getLivePhotoCount: vitest.fn(),
     updateAll: vitest.fn(),
     updateDuplicates: vitest.fn(),
-    getExternalLibraryAssetPaths: vitest.fn(),
     getByLibraryIdAndOriginalPath: vitest.fn(),
     deleteAll: vitest.fn(),
     update: vitest.fn(),
@@ -35,15 +33,11 @@ export const newAssetRepositoryMock = (): Mocked<IAssetRepository> => {
     getStatistics: vitest.fn(),
     getTimeBucket: vitest.fn(),
     getTimeBuckets: vitest.fn(),
-    restoreAll: vitest.fn(),
-    softDeleteAll: vitest.fn(),
     getAssetIdByCity: vitest.fn(),
-    getAssetIdByTag: vitest.fn(),
     getAllForUserFullSync: vitest.fn(),
     getChangedDeltaSync: vitest.fn(),
     getDuplicates: vitest.fn(),
     upsertFile: vitest.fn(),
-    getAssetsByOriginalPath: vitest.fn(),
-    getUniqueOriginalPaths: vitest.fn(),
+    upsertFiles: vitest.fn(),
   };
 };

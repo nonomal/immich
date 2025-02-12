@@ -2,17 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Chunked, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators';
 import { TagEntity } from 'src/entities/tag.entity';
-import { AssetTagItem, ITagRepository } from 'src/interfaces/tag.interface';
-import { Instrumentation } from 'src/utils/instrumentation';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 import { DataSource, In, Repository } from 'typeorm';
 
-@Instrumentation()
+export type AssetTagItem = { assetId: string; tagId: string };
+
 @Injectable()
-export class TagRepository implements ITagRepository {
+export class TagRepository {
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     @InjectRepository(TagEntity) private repository: Repository<TagEntity>,
-  ) {}
+    private logger: LoggingRepository,
+  ) {
+    this.logger.setContext(TagRepository.name);
+  }
 
   get(id: string): Promise<TagEntity | null> {
     return this.repository.findOne({ where: { id } });
@@ -105,7 +108,6 @@ export class TagRepository implements ITagRepository {
     return new Set(results.map(({ assetId }) => assetId));
   }
 
-  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   async addAssetIds(tagId: string, assetIds: string[]): Promise<void> {
     if (assetIds.length === 0) {
       return;
@@ -119,7 +121,6 @@ export class TagRepository implements ITagRepository {
       .execute();
   }
 
-  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   @Chunked({ paramIndex: 1 })
   async removeAssetIds(tagId: string, assetIds: string[]): Promise<void> {
     if (assetIds.length === 0) {
@@ -137,7 +138,6 @@ export class TagRepository implements ITagRepository {
       .execute();
   }
 
-  @GenerateSql({ params: [[{ assetId: DummyValue.UUID, tagId: DummyValue.UUID }]] })
   @Chunked()
   async upsertAssetIds(items: AssetTagItem[]): Promise<AssetTagItem[]> {
     if (items.length === 0) {
@@ -171,6 +171,34 @@ export class TagRepository implements ITagRepository {
         .into('tag_asset', ['tagsId', 'assetsId'])
         .values(tagIds.map((tagId) => ({ tagsId: tagId, assetsId: assetId })))
         .execute();
+    });
+  }
+
+  async deleteEmptyTags() {
+    await this.dataSource.transaction(async (manager) => {
+      const ids = new Set<string>();
+      const tags = await manager.find(TagEntity);
+      for (const tag of tags) {
+        const count = await manager
+          .createQueryBuilder('assets', 'asset')
+          .innerJoin(
+            'asset.tags',
+            'asset_tags',
+            'asset_tags.id IN (SELECT id_descendant FROM tags_closure WHERE id_ancestor = :tagId)',
+            { tagId: tag.id },
+          )
+          .getCount();
+
+        if (count === 0) {
+          this.logger.debug(`Found empty tag: ${tag.id} - ${tag.value}`);
+          ids.add(tag.id);
+        }
+      }
+
+      if (ids.size > 0) {
+        await manager.delete(TagEntity, { id: In([...ids]) });
+        this.logger.log(`Deleted ${ids.size} empty tags`);
+      }
     });
   }
 

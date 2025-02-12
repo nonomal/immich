@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEnum, IsNotEmpty } from 'class-validator';
-import { JobCommand, QueueName } from 'src/interfaces/job.interface';
+import { JobCommand, ManualJobName, QueueName } from 'src/enum';
 import { ValidateBoolean } from 'src/validation';
 
 export class JobIdParamDto {
@@ -17,7 +17,13 @@ export class JobCommandDto {
   command!: JobCommand;
 
   @ValidateBoolean({ optional: true })
-  force!: boolean;
+  force?: boolean; // TODO: this uses undefined as a third state, which should be refactored to be more explicit
+}
+
+export class JobCreateDto {
+  @IsEnum(ManualJobName)
+  @ApiProperty({ type: 'string', enum: ManualJobName, enumName: 'ManualJobName' })
+  name!: ManualJobName;
 }
 
 export class JobCountsDto {
@@ -90,4 +96,7 @@ export class AllJobStatusResponseDto implements Record<QueueName, JobStatusDto> 
 
   @ApiProperty({ type: JobStatusDto })
   [QueueName.NOTIFICATION]!: JobStatusDto;
+
+  @ApiProperty({ type: JobStatusDto })
+  [QueueName.BACKUP_DATABASE]!: JobStatusDto;
 }

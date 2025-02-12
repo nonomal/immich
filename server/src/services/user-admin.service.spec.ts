@@ -1,50 +1,27 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { mapUserAdmin } from 'src/dtos/user.dto';
-import { UserStatus } from 'src/enum';
-import { IAlbumRepository } from 'src/interfaces/album.interface';
-import { ICryptoRepository } from 'src/interfaces/crypto.interface';
-import { IEventRepository } from 'src/interfaces/event.interface';
-import { IJobRepository, JobName } from 'src/interfaces/job.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import { IUserRepository } from 'src/interfaces/user.interface';
+import { JobName, UserStatus } from 'src/enum';
 import { UserAdminService } from 'src/services/user-admin.service';
 import { authStub } from 'test/fixtures/auth.stub';
 import { userStub } from 'test/fixtures/user.stub';
-import { newAlbumRepositoryMock } from 'test/repositories/album.repository.mock';
-import { newCryptoRepositoryMock } from 'test/repositories/crypto.repository.mock';
-import { newEventRepositoryMock } from 'test/repositories/event.repository.mock';
-import { newJobRepositoryMock } from 'test/repositories/job.repository.mock';
-import { newLoggerRepositoryMock } from 'test/repositories/logger.repository.mock';
-import { newUserRepositoryMock } from 'test/repositories/user.repository.mock';
-import { Mocked, describe } from 'vitest';
+import { newTestService, ServiceMocks } from 'test/utils';
+import { describe } from 'vitest';
 
 describe(UserAdminService.name, () => {
   let sut: UserAdminService;
-  let albumMock: Mocked<IAlbumRepository>;
-  let cryptoMock: Mocked<ICryptoRepository>;
-  let eventMock: Mocked<IEventRepository>;
-  let jobMock: Mocked<IJobRepository>;
-  let loggerMock: Mocked<ILoggerRepository>;
-  let userMock: Mocked<IUserRepository>;
+  let mocks: ServiceMocks;
 
   beforeEach(() => {
-    albumMock = newAlbumRepositoryMock();
-    cryptoMock = newCryptoRepositoryMock();
-    eventMock = newEventRepositoryMock();
-    jobMock = newJobRepositoryMock();
-    userMock = newUserRepositoryMock();
-    loggerMock = newLoggerRepositoryMock();
+    ({ sut, mocks } = newTestService(UserAdminService));
 
-    sut = new UserAdminService(albumMock, cryptoMock, eventMock, jobMock, userMock, loggerMock);
-
-    userMock.get.mockImplementation((userId) =>
-      Promise.resolve([userStub.admin, userStub.user1].find((user) => user.id === userId) ?? null),
+    mocks.user.get.mockImplementation((userId) =>
+      Promise.resolve([userStub.admin, userStub.user1].find((user) => user.id === userId) ?? undefined),
     );
   });
 
   describe('create', () => {
     it('should not create a user if there is no local admin account', async () => {
-      userMock.getAdmin.mockResolvedValueOnce(null);
+      mocks.user.getAdmin.mockResolvedValueOnce(void 0);
 
       await expect(
         sut.create({
@@ -56,8 +33,8 @@ describe(UserAdminService.name, () => {
     });
 
     it('should create user', async () => {
-      userMock.getAdmin.mockResolvedValue(userStub.admin);
-      userMock.create.mockResolvedValue(userStub.user1);
+      mocks.user.getAdmin.mockResolvedValue(userStub.admin);
+      mocks.user.create.mockResolvedValue(userStub.user1);
 
       await expect(
         sut.create({
@@ -68,8 +45,8 @@ describe(UserAdminService.name, () => {
         }),
       ).resolves.toEqual(mapUserAdmin(userStub.user1));
 
-      expect(userMock.getAdmin).toBeCalled();
-      expect(userMock.create).toBeCalledWith({
+      expect(mocks.user.getAdmin).toBeCalled();
+      expect(mocks.user.create).toBeCalledWith({
         email: userStub.user1.email,
         name: userStub.user1.name,
         storageLabel: 'label',
@@ -85,20 +62,20 @@ describe(UserAdminService.name, () => {
         email: 'immich@test.com',
         storageLabel: 'storage_label',
       };
-      userMock.getByEmail.mockResolvedValue(null);
-      userMock.getByStorageLabel.mockResolvedValue(null);
-      userMock.update.mockResolvedValue(userStub.user1);
+      mocks.user.getByEmail.mockResolvedValue(void 0);
+      mocks.user.getByStorageLabel.mockResolvedValue(void 0);
+      mocks.user.update.mockResolvedValue(userStub.user1);
 
       await sut.update(authStub.user1, userStub.user1.id, update);
 
-      expect(userMock.getByEmail).toHaveBeenCalledWith(update.email);
-      expect(userMock.getByStorageLabel).toHaveBeenCalledWith(update.storageLabel);
+      expect(mocks.user.getByEmail).toHaveBeenCalledWith(update.email);
+      expect(mocks.user.getByStorageLabel).toHaveBeenCalledWith(update.storageLabel);
     });
 
     it('should not set an empty string for storage label', async () => {
-      userMock.update.mockResolvedValue(userStub.user1);
+      mocks.user.update.mockResolvedValue(userStub.user1);
       await sut.update(authStub.admin, userStub.user1.id, { storageLabel: '' });
-      expect(userMock.update).toHaveBeenCalledWith(userStub.user1.id, {
+      expect(mocks.user.update).toHaveBeenCalledWith(userStub.user1.id, {
         storageLabel: null,
         updatedAt: expect.any(Date),
       });
@@ -107,27 +84,27 @@ describe(UserAdminService.name, () => {
     it('should not change an email to one already in use', async () => {
       const dto = { id: userStub.user1.id, email: 'updated@test.com' };
 
-      userMock.get.mockResolvedValue(userStub.user1);
-      userMock.getByEmail.mockResolvedValue(userStub.admin);
+      mocks.user.get.mockResolvedValue(userStub.user1);
+      mocks.user.getByEmail.mockResolvedValue(userStub.admin);
 
       await expect(sut.update(authStub.admin, userStub.user1.id, dto)).rejects.toBeInstanceOf(BadRequestException);
 
-      expect(userMock.update).not.toHaveBeenCalled();
+      expect(mocks.user.update).not.toHaveBeenCalled();
     });
 
     it('should not let the admin change the storage label to one already in use', async () => {
       const dto = { id: userStub.user1.id, storageLabel: 'admin' };
 
-      userMock.get.mockResolvedValue(userStub.user1);
-      userMock.getByStorageLabel.mockResolvedValue(userStub.admin);
+      mocks.user.get.mockResolvedValue(userStub.user1);
+      mocks.user.getByStorageLabel.mockResolvedValue(userStub.admin);
 
       await expect(sut.update(authStub.admin, userStub.user1.id, dto)).rejects.toBeInstanceOf(BadRequestException);
 
-      expect(userMock.update).not.toHaveBeenCalled();
+      expect(mocks.user.update).not.toHaveBeenCalled();
     });
 
     it('update user information should throw error if user not found', async () => {
-      userMock.get.mockResolvedValueOnce(null);
+      mocks.user.get.mockResolvedValueOnce(void 0);
 
       await expect(
         sut.update(authStub.admin, userStub.user1.id, { shouldChangePassword: true }),
@@ -137,10 +114,10 @@ describe(UserAdminService.name, () => {
 
   describe('delete', () => {
     it('should throw error if user could not be found', async () => {
-      userMock.get.mockResolvedValue(null);
+      mocks.user.get.mockResolvedValue(void 0);
 
       await expect(sut.delete(authStub.admin, userStub.admin.id, {})).rejects.toThrowError(BadRequestException);
-      expect(userMock.delete).not.toHaveBeenCalled();
+      expect(mocks.user.delete).not.toHaveBeenCalled();
     });
 
     it('cannot delete admin user', async () => {
@@ -150,33 +127,33 @@ describe(UserAdminService.name, () => {
     it('should require the auth user be an admin', async () => {
       await expect(sut.delete(authStub.user1, authStub.admin.user.id, {})).rejects.toBeInstanceOf(ForbiddenException);
 
-      expect(userMock.delete).not.toHaveBeenCalled();
+      expect(mocks.user.delete).not.toHaveBeenCalled();
     });
 
     it('should delete user', async () => {
-      userMock.get.mockResolvedValue(userStub.user1);
-      userMock.update.mockResolvedValue(userStub.user1);
+      mocks.user.get.mockResolvedValue(userStub.user1);
+      mocks.user.update.mockResolvedValue(userStub.user1);
 
       await expect(sut.delete(authStub.admin, userStub.user1.id, {})).resolves.toEqual(mapUserAdmin(userStub.user1));
-      expect(userMock.update).toHaveBeenCalledWith(userStub.user1.id, {
+      expect(mocks.user.update).toHaveBeenCalledWith(userStub.user1.id, {
         status: UserStatus.DELETED,
         deletedAt: expect.any(Date),
       });
     });
 
     it('should force delete user', async () => {
-      userMock.get.mockResolvedValue(userStub.user1);
-      userMock.update.mockResolvedValue(userStub.user1);
+      mocks.user.get.mockResolvedValue(userStub.user1);
+      mocks.user.update.mockResolvedValue(userStub.user1);
 
       await expect(sut.delete(authStub.admin, userStub.user1.id, { force: true })).resolves.toEqual(
         mapUserAdmin(userStub.user1),
       );
 
-      expect(userMock.update).toHaveBeenCalledWith(userStub.user1.id, {
+      expect(mocks.user.update).toHaveBeenCalledWith(userStub.user1.id, {
         status: UserStatus.REMOVING,
         deletedAt: expect.any(Date),
       });
-      expect(jobMock.queue).toHaveBeenCalledWith({
+      expect(mocks.job.queue).toHaveBeenCalledWith({
         name: JobName.USER_DELETION,
         data: { id: userStub.user1.id, force: true },
       });
@@ -185,16 +162,16 @@ describe(UserAdminService.name, () => {
 
   describe('restore', () => {
     it('should throw error if user could not be found', async () => {
-      userMock.get.mockResolvedValue(null);
+      mocks.user.get.mockResolvedValue(void 0);
       await expect(sut.restore(authStub.admin, userStub.admin.id)).rejects.toThrowError(BadRequestException);
-      expect(userMock.update).not.toHaveBeenCalled();
+      expect(mocks.user.update).not.toHaveBeenCalled();
     });
 
     it('should restore an user', async () => {
-      userMock.get.mockResolvedValue(userStub.user1);
-      userMock.update.mockResolvedValue(userStub.user1);
+      mocks.user.get.mockResolvedValue(userStub.user1);
+      mocks.user.restore.mockResolvedValue(userStub.user1);
       await expect(sut.restore(authStub.admin, userStub.user1.id)).resolves.toEqual(mapUserAdmin(userStub.user1));
-      expect(userMock.update).toHaveBeenCalledWith(userStub.user1.id, { status: UserStatus.ACTIVE, deletedAt: null });
+      expect(mocks.user.restore).toHaveBeenCalledWith(userStub.user1.id);
     });
   });
 });

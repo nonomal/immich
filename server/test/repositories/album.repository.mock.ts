@@ -1,20 +1,18 @@
-import { IAlbumRepository } from 'src/interfaces/album.interface';
+import { AlbumRepository } from 'src/repositories/album.repository';
+import { RepositoryInterface } from 'src/types';
 import { Mocked, vitest } from 'vitest';
 
-export const newAlbumRepositoryMock = (): Mocked<IAlbumRepository> => {
+export const newAlbumRepositoryMock = (): Mocked<RepositoryInterface<AlbumRepository>> => {
   return {
     getById: vitest.fn(),
-    getByIds: vitest.fn(),
     getByAssetId: vitest.fn(),
     getMetadataForIds: vitest.fn(),
-    getInvalidThumbnail: vitest.fn(),
     getOwned: vitest.fn(),
     getShared: vitest.fn(),
     getNotShared: vitest.fn(),
     restoreAll: vitest.fn(),
     softDeleteAll: vitest.fn(),
     deleteAll: vitest.fn(),
-    getAll: vitest.fn(),
     addAssetIds: vitest.fn(),
     removeAsset: vitest.fn(),
     removeAssetIds: vitest.fn(),

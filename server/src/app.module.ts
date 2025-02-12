@@ -1,32 +1,35 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Inject, Module, OnModuleDestroy, OnModuleInit, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE, ModuleRef } from '@nestjs/core';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import _ from 'lodash';
+import { PostgresJSDialect } from 'kysely-postgres-js';
 import { ClsModule } from 'nestjs-cls';
+import { KyselyModule } from 'nestjs-kysely';
 import { OpenTelemetryModule } from 'nestjs-otel';
+import postgres from 'postgres';
 import { commands } from 'src/commands';
-import { bullConfig, bullQueues, clsConfig, immichAppConfig } from 'src/config';
+import { IWorker } from 'src/constants';
 import { controllers } from 'src/controllers';
-import { databaseConfig } from 'src/database.config';
 import { entities } from 'src/entities';
-import { IEventRepository } from 'src/interfaces/event.interface';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
+import { ImmichWorker } from 'src/enum';
 import { AuthGuard } from 'src/middleware/auth.guard';
 import { ErrorInterceptor } from 'src/middleware/error.interceptor';
 import { FileUploadInterceptor } from 'src/middleware/file-upload.interceptor';
 import { GlobalExceptionFilter } from 'src/middleware/global-exception.filter';
 import { LoggingInterceptor } from 'src/middleware/logging.interceptor';
 import { repositories } from 'src/repositories';
+import { ConfigRepository } from 'src/repositories/config.repository';
+import { EventRepository } from 'src/repositories/event.repository';
+import { JobRepository } from 'src/repositories/job.repository';
+import { LoggingRepository } from 'src/repositories/logging.repository';
+import { teardownTelemetry, TelemetryRepository } from 'src/repositories/telemetry.repository';
 import { services } from 'src/services';
+import { AuthService } from 'src/services/auth.service';
+import { CliService } from 'src/services/cli.service';
 import { DatabaseService } from 'src/services/database.service';
-import { setupEventHandlers } from 'src/utils/events';
-import { otelConfig } from 'src/utils/instrumentation';
 
-const common = [...services, ...repositories];
+const common = [...repositories, ...services];
 
 const middleware = [
   FileUploadInterceptor,
@@ -37,18 +40,19 @@ const middleware = [
   { provide: APP_GUARD, useClass: AuthGuard },
 ];
 
+const configRepository = new ConfigRepository();
+const { bull, cls, database, otel } = configRepository.getEnv();
+
 const imports = [
-  BullModule.forRoot(bullConfig),
-  BullModule.registerQueue(...bullQueues),
-  ClsModule.forRoot(clsConfig),
-  ConfigModule.forRoot(immichAppConfig),
-  EventEmitterModule.forRoot(),
-  OpenTelemetryModule.forRoot(otelConfig),
+  BullModule.forRoot(bull.config),
+  BullModule.registerQueue(...bull.queues),
+  ClsModule.forRoot(cls.config),
+  OpenTelemetryModule.forRoot(otel),
   TypeOrmModule.forRootAsync({
     inject: [ModuleRef],
     useFactory: (moduleRef: ModuleRef) => {
       return {
-        ...databaseConfig,
+        ...database.config.typeorm,
         poolErrorHandler: (error) => {
           moduleRef.get(DatabaseService, { strict: false }).handleConnectionError(error);
         },
@@ -56,74 +60,80 @@ const imports = [
     },
   }),
   TypeOrmModule.forFeature(entities),
+  KyselyModule.forRoot({
+    dialect: new PostgresJSDialect({ postgres: postgres(database.config.kysely) }),
+    log(event) {
+      if (event.level === 'error') {
+        console.error('Query failed :', {
+          durationMs: event.queryDurationMillis,
+          error: event.error,
+          sql: event.query.sql,
+          params: event.query.parameters,
+        });
+      }
+    },
+  }),
 ];
+
+class BaseModule implements OnModuleInit, OnModuleDestroy {
+  constructor(
+    @Inject(IWorker) private worker: ImmichWorker,
+    logger: LoggingRepository,
+    private eventRepository: EventRepository,
+    private jobRepository: JobRepository,
+    private telemetryRepository: TelemetryRepository,
+    private authService: AuthService,
+  ) {
+    logger.setAppName(this.worker);
+  }
+
+  async onModuleInit() {
+    this.telemetryRepository.setup({ repositories });
+
+    this.jobRepository.setup({ services });
+    if (this.worker === ImmichWorker.MICROSERVICES) {
+      this.jobRepository.startWorkers();
+    }
+
+    this.eventRepository.setAuthFn(async (client) =>
+      this.authService.authenticate({
+        headers: client.request.headers,
+        queryParams: {},
+        metadata: { adminRoute: false, sharedLinkRoute: false, uri: '/api/socket.io' },
+      }),
+    );
+
+    this.eventRepository.setup({ services });
+    await this.eventRepository.emit('app.bootstrap');
+  }
+
+  async onModuleDestroy() {
+    await this.eventRepository.emit('app.shutdown');
+    await teardownTelemetry();
+  }
+}
 
 @Module({
   imports: [...imports, ScheduleModule.forRoot()],
   controllers: [...controllers],
-  providers: [...common, ...middleware],
+  providers: [...common, ...middleware, { provide: IWorker, useValue: ImmichWorker.API }],
 })
-export class ApiModule implements OnModuleInit, OnModuleDestroy {
-  constructor(
-    private moduleRef: ModuleRef,
-    @Inject(IEventRepository) private eventRepository: IEventRepository,
-    @Inject(ILoggerRepository) private logger: ILoggerRepository,
-  ) {}
-
-  async onModuleInit() {
-    const items = setupEventHandlers(this.moduleRef);
-
-    await this.eventRepository.emit('app.bootstrap', 'api');
-
-    this.logger.setContext('EventLoader');
-    const eventMap = _.groupBy(items, 'event');
-    for (const [event, handlers] of Object.entries(eventMap)) {
-      for (const { priority, label } of handlers) {
-        this.logger.verbose(`Added ${event} {${label}${priority ? '' : ', ' + priority}} event`);
-      }
-    }
-  }
-
-  async onModuleDestroy() {
-    await this.eventRepository.emit('app.shutdown');
-  }
-}
+export class ApiModule extends BaseModule {}
 
 @Module({
   imports: [...imports],
-  providers: [...common, SchedulerRegistry],
+  providers: [...common, { provide: IWorker, useValue: ImmichWorker.MICROSERVICES }, SchedulerRegistry],
 })
-export class MicroservicesModule implements OnModuleInit, OnModuleDestroy {
-  constructor(
-    private moduleRef: ModuleRef,
-    @Inject(IEventRepository) private eventRepository: IEventRepository,
-  ) {}
-
-  async onModuleInit() {
-    setupEventHandlers(this.moduleRef);
-    await this.eventRepository.emit('app.bootstrap', 'microservices');
-  }
-
-  async onModuleDestroy() {
-    await this.eventRepository.emit('app.shutdown');
-  }
-}
+export class MicroservicesModule extends BaseModule {}
 
 @Module({
   imports: [...imports],
   providers: [...common, ...commands, SchedulerRegistry],
 })
-export class ImmichAdminModule {}
+export class ImmichAdminModule implements OnModuleDestroy {
+  constructor(private service: CliService) {}
 
-@Module({
-  imports: [
-    ConfigModule.forRoot(immichAppConfig),
-    EventEmitterModule.forRoot(),
-    TypeOrmModule.forRoot(databaseConfig),
-    TypeOrmModule.forFeature(entities),
-    OpenTelemetryModule.forRoot(otelConfig),
-  ],
-  controllers: [...controllers],
-  providers: [...common, ...middleware, SchedulerRegistry],
-})
-export class AppTestModule {}
+  async onModuleDestroy() {
+    await this.service.cleanup();
+  }
+}

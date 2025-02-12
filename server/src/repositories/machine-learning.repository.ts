@@ -1,47 +1,94 @@
 import { Injectable } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import { CLIPConfig } from 'src/dtos/model-config.dto';
-import {
-  ClipTextualResponse,
-  ClipVisualResponse,
-  FaceDetectionOptions,
-  FacialRecognitionResponse,
-  IMachineLearningRepository,
-  MachineLearningRequest,
-  ModelPayload,
-  ModelTask,
-  ModelType,
-} from 'src/interfaces/machine-learning.interface';
-import { Instrumentation } from 'src/utils/instrumentation';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 
-const errorPrefix = 'Machine learning request';
+export interface BoundingBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
 
-@Instrumentation()
+export enum ModelTask {
+  FACIAL_RECOGNITION = 'facial-recognition',
+  SEARCH = 'clip',
+}
+
+export enum ModelType {
+  DETECTION = 'detection',
+  PIPELINE = 'pipeline',
+  RECOGNITION = 'recognition',
+  TEXTUAL = 'textual',
+  VISUAL = 'visual',
+}
+
+export type ModelPayload = { imagePath: string } | { text: string };
+
+type ModelOptions = { modelName: string };
+
+export type FaceDetectionOptions = ModelOptions & { minScore: number };
+
+type VisualResponse = { imageHeight: number; imageWidth: number };
+export type ClipVisualRequest = { [ModelTask.SEARCH]: { [ModelType.VISUAL]: ModelOptions } };
+export type ClipVisualResponse = { [ModelTask.SEARCH]: string } & VisualResponse;
+
+export type ClipTextualRequest = { [ModelTask.SEARCH]: { [ModelType.TEXTUAL]: ModelOptions } };
+export type ClipTextualResponse = { [ModelTask.SEARCH]: string };
+
+export type FacialRecognitionRequest = {
+  [ModelTask.FACIAL_RECOGNITION]: {
+    [ModelType.DETECTION]: ModelOptions & { options: { minScore: number } };
+    [ModelType.RECOGNITION]: ModelOptions;
+  };
+};
+
+export interface Face {
+  boundingBox: BoundingBox;
+  embedding: string;
+  score: number;
+}
+
+export type FacialRecognitionResponse = { [ModelTask.FACIAL_RECOGNITION]: Face[] } & VisualResponse;
+export type DetectedFaces = { faces: Face[] } & VisualResponse;
+export type MachineLearningRequest = ClipVisualRequest | ClipTextualRequest | FacialRecognitionRequest;
+
 @Injectable()
-export class MachineLearningRepository implements IMachineLearningRepository {
-  private async predict<T>(url: string, payload: ModelPayload, config: MachineLearningRequest): Promise<T> {
-    const formData = await this.getFormData(payload, config);
-
-    const res = await fetch(new URL('/predict', url), { method: 'POST', body: formData }).catch(
-      (error: Error | any) => {
-        throw new Error(`${errorPrefix} to "${url}" failed with ${error?.cause || error}`);
-      },
-    );
-
-    if (res.status >= 400) {
-      throw new Error(`${errorPrefix} '${JSON.stringify(config)}' failed with status ${res.status}: ${res.statusText}`);
-    }
-    return res.json();
+export class MachineLearningRepository {
+  constructor(private logger: LoggingRepository) {
+    this.logger.setContext(MachineLearningRepository.name);
   }
 
-  async detectFaces(url: string, imagePath: string, { modelName, minScore }: FaceDetectionOptions) {
+  private async predict<T>(urls: string[], payload: ModelPayload, config: MachineLearningRequest): Promise<T> {
+    const formData = await this.getFormData(payload, config);
+    for (const url of urls) {
+      try {
+        const response = await fetch(new URL('/predict', url), { method: 'POST', body: formData });
+        if (response.ok) {
+          return response.json();
+        }
+
+        this.logger.warn(
+          `Machine learning request to "${url}" failed with status ${response.status}: ${response.statusText}`,
+        );
+      } catch (error: Error | unknown) {
+        this.logger.warn(
+          `Machine learning request to "${url}" failed: ${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
+
+    throw new Error(`Machine learning request '${JSON.stringify(config)}' failed for all URLs`);
+  }
+
+  async detectFaces(urls: string[], imagePath: string, { modelName, minScore }: FaceDetectionOptions) {
     const request = {
       [ModelTask.FACIAL_RECOGNITION]: {
         [ModelType.DETECTION]: { modelName, options: { minScore } },
         [ModelType.RECOGNITION]: { modelName },
       },
     };
-    const response = await this.predict<FacialRecognitionResponse>(url, { imagePath }, request);
+    const response = await this.predict<FacialRecognitionResponse>(urls, { imagePath }, request);
     return {
       imageHeight: response.imageHeight,
       imageWidth: response.imageWidth,
@@ -49,15 +96,15 @@ export class MachineLearningRepository implements IMachineLearningRepository {
     };
   }
 
-  async encodeImage(url: string, imagePath: string, { modelName }: CLIPConfig) {
+  async encodeImage(urls: string[], imagePath: string, { modelName }: CLIPConfig) {
     const request = { [ModelTask.SEARCH]: { [ModelType.VISUAL]: { modelName } } };
-    const response = await this.predict<ClipVisualResponse>(url, { imagePath }, request);
+    const response = await this.predict<ClipVisualResponse>(urls, { imagePath }, request);
     return response[ModelTask.SEARCH];
   }
 
-  async encodeText(url: string, text: string, { modelName }: CLIPConfig) {
+  async encodeText(urls: string[], text: string, { modelName }: CLIPConfig) {
     const request = { [ModelTask.SEARCH]: { [ModelType.TEXTUAL]: { modelName } } };
-    const response = await this.predict<ClipTextualResponse>(url, { text }, request);
+    const response = await this.predict<ClipTextualResponse>(urls, { text }, request);
     return response[ModelTask.SEARCH];
   }
 

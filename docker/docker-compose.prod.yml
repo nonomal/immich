@@ -16,7 +16,7 @@ services:
     env_file:
       - .env
     ports:
-      - 2283:3001
+      - 2283:2283
     depends_on:
       - redis
       - database
@@ -47,7 +47,7 @@ services:
 
   redis:
     container_name: immich_redis
-    image: redis:6.2-alpine@sha256:fd1b5400ca24adc2ff77abdf00acb72c3aae85b94e43557ab2606d29a74bfa01
+    image: redis:6.2-alpine@sha256:905c4ee67b8e0aa955331960d2aa745781e6bd89afc44a8584bfd13bc890f0ae
     healthcheck:
       test: redis-cli ping || exit 1
     restart: always
@@ -67,19 +67,31 @@ services:
     ports:
       - 5432:5432
     healthcheck:
-      test: pg_isready --dbname='${DB_DATABASE_NAME}' --username='${DB_USERNAME}' || exit 1; Chksum="$$(psql --dbname='${DB_DATABASE_NAME}' --username='${DB_USERNAME}' --tuples-only --no-align --command='SELECT COALESCE(SUM(checksum_failures), 0) FROM pg_stat_database')"; echo "checksum failure count is $$Chksum"; [ "$$Chksum" = '0' ] || exit 1
+      test: >-
+        pg_isready --dbname="$${POSTGRES_DB}" --username="$${POSTGRES_USER}" || exit 1;
+        Chksum="$$(psql --dbname="$${POSTGRES_DB}" --username="$${POSTGRES_USER}" --tuples-only --no-align
+        --command='SELECT COALESCE(SUM(checksum_failures), 0) FROM pg_stat_database')";
+        echo "checksum failure count is $$Chksum";
+        [ "$$Chksum" = '0' ] || exit 1
       interval: 5m
       start_interval: 30s
       start_period: 5m
-    command: ["postgres", "-c", "shared_preload_libraries=vectors.so", "-c", 'search_path="$$user", public, vectors', "-c", "logging_collector=on", "-c", "max_wal_size=2GB", "-c", "shared_buffers=512MB", "-c", "wal_compression=on"]
+    command: >-
+      postgres
+      -c shared_preload_libraries=vectors.so
+      -c 'search_path="$$user", public, vectors'
+      -c logging_collector=on
+      -c max_wal_size=2GB
+      -c shared_buffers=512MB
+      -c wal_compression=on
     restart: always
 
-  # set IMMICH_METRICS=true in .env to enable metrics
+  # set IMMICH_TELEMETRY_INCLUDE=all in .env to enable metrics
   immich-prometheus:
     container_name: immich_prometheus
     ports:
       - 9090:9090
-    image: prom/prometheus@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94
+    image: prom/prometheus@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
@@ -91,7 +103,7 @@ services:
     command: ['./run.sh', '-disable-reporting']
     ports:
       - 3000:3000
-    image: grafana/grafana:11.2.0-ubuntu@sha256:8e2c13739563c3da9d45de96c6bcb63ba617cac8c571c060112c7fc8ad6914e9
+    image: grafana/grafana:11.5.1-ubuntu@sha256:9a4ab78cec1a2ec7d1ca5dfd5aacec6412706a1bc9e971fc7184e2f6696a63f5
     volumes:
       - grafana-data:/var/lib/grafana
 

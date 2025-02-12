@@ -1,18 +1,17 @@
-import { Inject } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AssetResponseDto, mapAsset } from 'src/dtos/asset-response.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { IAssetRepository } from 'src/interfaces/asset.interface';
+import { AssetEntity } from 'src/entities/asset.entity';
+import { BaseService } from 'src/services/base.service';
 
-export class ViewService {
-  constructor(@Inject(IAssetRepository) private assetRepository: IAssetRepository) {}
-
+@Injectable()
+export class ViewService extends BaseService {
   getUniqueOriginalPaths(auth: AuthDto): Promise<string[]> {
-    return this.assetRepository.getUniqueOriginalPaths(auth.user.id);
+    return this.viewRepository.getUniqueOriginalPaths(auth.user.id);
   }
 
   async getAssetsByOriginalPath(auth: AuthDto, path: string): Promise<AssetResponseDto[]> {
-    const assets = await this.assetRepository.getAssetsByOriginalPath(auth.user.id, path);
-
-    return assets.map((asset) => mapAsset(asset, { auth }));
+    const assets = await this.viewRepository.getAssetsByOriginalPath(auth.user.id, path);
+    return assets.map((asset) => mapAsset(asset as unknown as AssetEntity, { auth }));
   }
 }

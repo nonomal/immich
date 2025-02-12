@@ -1,7 +1,8 @@
 import { UserEntity } from 'src/entities/user.entity';
 import { UserAvatarColor, UserMetadataKey } from 'src/enum';
+import { DeepPartial } from 'src/types';
 import { HumanReadableSize } from 'src/utils/bytes';
-import { Column, DeepPartial, Entity, ManyToOne, PrimaryColumn } from 'typeorm';
+import { Column, Entity, ManyToOne, PrimaryColumn } from 'typeorm';
 
 @Entity('user_metadata')
 export class UserMetadataEntity<T extends keyof UserMetadata = UserMetadataKey> {
@@ -32,6 +33,10 @@ export interface UserPreferences {
   };
   ratings: {
     enabled: boolean;
+  };
+  sharedLinks: {
+    enabled: boolean;
+    sidebarWeb: boolean;
   };
   tags: {
     enabled: boolean;
@@ -70,6 +75,10 @@ export const getDefaultPreferences = (user: { email: string }): UserPreferences 
       enabled: true,
     },
     people: {
+      enabled: true,
+      sidebarWeb: false,
+    },
+    sharedLinks: {
       enabled: true,
       sidebarWeb: false,
     },

@@ -32,11 +32,14 @@
   <a href="README_de_DE.md">Deutsch</a>
   <a href="README_nl_NL.md">Nederlands</a>
   <a href="README_tr_TR.md">Türkçe</a>
+  <a href="README_uk_UA.md">Українська</a>
   <a href="README_ru_RU.md">Русский</a>
   <a href="README_pt_BR.md">Português Brasileiro</a>
   <a href="README_sv_SE.md">Svenska</a>
   <a href="README_ar_JO.md">العربية</a>
-  
+  <a href="README_vi_VN.md">Tiếng Việt</a>
+  <a href="README_th_TH.md">ภาษาไทย</a>
+
 </p>
 
 ## 免责声明
@@ -57,7 +60,7 @@
 - [路线图](https://immich.app/roadmap)
 - [在线演示](#示例)
 - [功能特性](#功能特性)
-- [多语言](https://immich.app/docs/developer/tranlations)
+- [多语言](https://immich.app/docs/developer/translations)
 - [贡献者](https://immich.app/docs/overview/support-the-project)
 
 ## 示例
@@ -95,7 +98,7 @@
 | 实况照片备份和查看                          | 是     | 是     |
 | 支持360度全景图显示                         | 否     | 是     |
 | 用户自定义存储结构                          | 是     | 是     |
-| 公共分享                                    | 否     | 是     |
+| 公共分享                                    | 是     | 是     |
 | 归档与收藏功能                              | 是     | 是     |
 | 足迹地图                                    | 是     | 是     |
 | 好友分享                                    | 是     | 是     |
@@ -104,6 +107,8 @@
 | 离线支持                                    | 是     | 否     |
 | 只读相册                                    | 是     | 是     |
 | 照片堆叠                                    | 是     | 是     |
+| 标签                                        | 否     | 是     |
+| 文件夹浏览                                  | 否     | 是     |
 
 ## 多语言
 

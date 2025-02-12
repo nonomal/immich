@@ -6,6 +6,12 @@ interface Options {
   onEscape?: () => void;
 }
 
+/**
+ * Calls a function when a click occurs outside of the element, or when the escape key is pressed.
+ * @param node
+ * @param options Object containing onOutclick and onEscape functions
+ * @returns
+ */
 export function clickOutside(node: HTMLElement, options: Options = {}): ActionReturn {
   const { onOutclick, onEscape } = options;
 
@@ -29,12 +35,12 @@ export function clickOutside(node: HTMLElement, options: Options = {}): ActionRe
     }
   };
 
-  document.addEventListener('click', handleClick, true);
+  document.addEventListener('mousedown', handleClick, true);
   node.addEventListener('keydown', handleKey, false);
 
   return {
     destroy() {
-      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('mousedown', handleClick, true);
       node.removeEventListener('keydown', handleKey, false);
     },
   };

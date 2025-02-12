@@ -1,4 +1,4 @@
-# Hardware-Accelerated Machine Learning [Experimental]
+# Hardware-Accelerated Machine Learning
 
 This feature allows you to use a GPU to accelerate machine learning tasks, such as Smart Search and Facial Recognition, while reducing CPU load.
 As this is a new feature, it is still experimental and may not work on all systems.
@@ -11,7 +11,7 @@ You do not need to redo any machine learning jobs after enabling hardware accele
 
 - ARM NN (Mali)
 - CUDA (NVIDIA GPUs with [compute capability](https://developer.nvidia.com/cuda-gpus) 5.2 or higher)
-- OpenVINO (Intel discrete GPUs such as Iris Xe and Arc)
+- OpenVINO (Intel GPUs such as Iris Xe and Arc)
 
 ## Limitations
 
@@ -38,13 +38,14 @@ You do not need to redo any machine learning jobs after enabling hardware accele
 
 - The GPU must have compute capability 5.2 or greater.
 - The server must have the official NVIDIA driver installed.
-- The installed driver must be >= 545 (it must support CUDA 12.3.2).
+- The installed driver must be >= 535 (it must support CUDA 12.2).
 - On Linux (except for WSL2), you also need to have [NVIDIA Container Toolkit][nvct] installed.
 
 #### OpenVINO
 
-- The server must have a discrete GPU, i.e. Iris Xe or Arc. Expect issues when attempting to use integrated graphics.
+- Integrated GPUs are more likely to experience issues than discrete GPUs, especially for older processors or servers with low RAM.
 - Ensure the server's kernel version is new enough to use the device for hardware accceleration.
+- Expect higher RAM usage when using OpenVINO compared to CPU processing.
 
 ## Setup
 
@@ -52,6 +53,12 @@ You do not need to redo any machine learning jobs after enabling hardware accele
 2. In the `docker-compose.yml` under `immich-machine-learning`, uncomment the `extends` section and change `cpu` to the appropriate backend.
 3. Still in `immich-machine-learning`, add one of -[armnn, cuda, openvino] to the `image` section's tag at the end of the line.
 4. Redeploy the `immich-machine-learning` container with these updated settings.
+
+### Confirming Device Usage
+
+You can confirm the device is being recognized and used by checking its utilization. There are many tools to display this, such as `nvtop` for NVIDIA or Intel and `intel_gpu_top` for Intel.
+
+You can also check the logs of the `immich-machine-learning` container. When a Smart Search or Face Detection job begins, or when you search with text in Immich, you should either see a log for `Available ORT providers` containing the relevant provider (e.g. `CUDAExecutionProvider` in the case of CUDA), or a `Loaded ANN model` log entry without errors in the case of ARM NN.
 
 #### Single Compose File
 
@@ -95,9 +102,22 @@ immich-machine-learning:
 
 Once this is done, you can redeploy the `immich-machine-learning` container.
 
-:::info
-You can confirm the device is being recognized and used by checking its utilization (via `nvtop` for CUDA, `intel_gpu_top` for OpenVINO, etc.). You can also enable debug logging by setting `IMMICH_LOG_LEVEL=debug` in the `.env` file and restarting the `immich-machine-learning` container. When a Smart Search or Face Detection job begins, you should see a log for `Available ORT providers` containing the relevant provider. In the case of ARM NN, the absence of a `Could not load ANN shared libraries` log entry means it loaded successfully.
-:::
+#### Multi-GPU
+
+If you want to utilize multiple NVIDIA or Intel GPUs, you can set the `MACHINE_LEARNING_DEVICE_IDS` environmental variable to a comma-separated list of device IDs and set `MACHINE_LEARNING_WORKERS` to the number of listed devices. You can run a command such as `nvidia-smi -L` or `glxinfo -B` to see the currently available devices and their corresponding IDs.
+
+For example, if you have devices 0 and 1, set the values as follows:
+
+```
+MACHINE_LEARNING_DEVICE_IDS=0,1
+MACHINE_LEARNING_WORKERS=2
+```
+
+In this example, the machine learning service will spawn two workers, one of which will allocate models to device 0 and the other to device 1. Different requests will be processed by one worker or the other.
+
+This approach can be used to simply specify a particular device as well. For example, setting `MACHINE_LEARNING_DEVICE_IDS=1` will ensure device 1 is always used instead of device 0.
+
+Note that you should increase job concurrencies to increase overall utilization and more effectively distribute work across multiple GPUs. Additionally, each GPU must be able to load all models. It is not possible to distribute a single model to multiple GPUs that individually have insufficient VRAM, or to delegate a specific model to one GPU.
 
 [hw-file]: https://github.com/immich-app/immich/releases/latest/download/hwaccel.ml.yml
 [nvct]: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html

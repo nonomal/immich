@@ -1,6 +1,6 @@
 ARG DEVICE=cpu
 
-FROM python:3.11-bookworm@sha256:20c1819af5af3acba0b2b66074a2615e398ceee6842adf03cd7ad5f8d0ee3daf AS builder-cpu
+FROM python:3.11-bookworm@sha256:14b4620f59a90f163dfa6bd252b68743f9a41d494a9fde935f9d7669d98094bb AS builder-cpu
 
 FROM builder-cpu AS builder-openvino
 
@@ -34,7 +34,7 @@ RUN python3 -m venv /opt/venv
 COPY poetry.lock pyproject.toml ./
 RUN poetry install --sync --no-interaction --no-ansi --no-root --with ${DEVICE} --without dev
 
-FROM python:3.11-slim-bookworm@sha256:ed4e985674f478c90ce879e9aa224fbb772c84e39b4aed5155b9e2280f131039 AS prod-cpu
+FROM python:3.11-slim-bookworm@sha256:42420f737ba91d509fc60d5ed65ed0492678a90c561e1fa08786ae8ba8b52eda AS prod-cpu
 
 FROM prod-cpu AS prod-openvino
 
@@ -49,7 +49,12 @@ RUN apt-get update && \
     apt-get remove wget -yqq && \
     rm -rf /var/lib/apt/lists/*
 
-FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04@sha256:fa44193567d1908f7ca1f3abf8623ce9c63bc8cba7bcfdb32702eb04d326f7a8 AS prod-cuda
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04@sha256:94c1577b2cd9dd6c0312dc04dff9cb2fdce2b268018abc3d7c2dbcacf1155000 AS prod-cuda
+
+RUN apt-get update && \
+    apt-get install --no-install-recommends -yqq libcudnn9-cuda-12 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder-cuda /usr/local/bin/python3 /usr/local/bin/python3
 COPY --from=builder-cuda /usr/local/lib/python3.11 /usr/local/lib/python3.11
@@ -99,8 +104,24 @@ RUN echo "hard core 0" >> /etc/security/limits.conf && \
 
 COPY --from=builder /opt/venv /opt/venv
 COPY ann/ann.py /usr/src/ann/ann.py
-COPY start.sh log_conf.json ./
+COPY start.sh log_conf.json gunicorn_conf.py ./
 COPY app .
+
+ARG BUILD_ID
+ARG BUILD_IMAGE
+ARG BUILD_SOURCE_REF
+ARG BUILD_SOURCE_COMMIT
+
+ENV IMMICH_BUILD=${BUILD_ID}
+ENV IMMICH_BUILD_URL=https://github.com/immich-app/immich/actions/runs/${BUILD_ID}
+ENV IMMICH_BUILD_IMAGE=${BUILD_IMAGE}
+ENV IMMICH_BUILD_IMAGE_URL=https://github.com/immich-app/immich/pkgs/container/immich-machine-learning
+ENV IMMICH_REPOSITORY=immich-app/immich
+ENV IMMICH_REPOSITORY_URL=https://github.com/immich-app/immich
+ENV IMMICH_SOURCE_REF=${BUILD_SOURCE_REF}
+ENV IMMICH_SOURCE_COMMIT=${BUILD_SOURCE_COMMIT}
+ENV IMMICH_SOURCE_URL=https://github.com/immich-app/immich/commit/${BUILD_SOURCE_COMMIT}
+
 ENTRYPOINT ["tini", "--"]
 CMD ["./start.sh"]
 

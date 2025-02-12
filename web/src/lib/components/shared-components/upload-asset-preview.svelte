@@ -15,11 +15,16 @@
     mdiLoading,
     mdiOpenInNew,
     mdiRestart,
+    mdiTrashCan,
   } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { fade } from 'svelte/transition';
 
-  export let uploadAsset: UploadAsset;
+  interface Props {
+    uploadAsset: UploadAsset;
+  }
+
+  let { uploadAsset }: Props = $props();
 
   const handleDismiss = (uploadAsset: UploadAsset) => {
     uploadAssetsStore.removeItem(uploadAsset.id);
@@ -28,6 +33,10 @@
   const handleRetry = async (uploadAsset: UploadAsset) => {
     uploadAssetsStore.removeItem(uploadAsset.id);
     await fileUploadHandler([uploadAsset.file], uploadAsset.albumId);
+  };
+
+  const asLink = (asset: UploadAsset) => {
+    return asset.isTrashed ? `${AppRoute.TRASH}/${asset.assetId}` : `${AppRoute.PHOTOS}/${uploadAsset.assetId}`;
   };
 </script>
 
@@ -45,7 +54,11 @@
       {:else if uploadAsset.state === UploadState.ERROR}
         <Icon path={mdiAlertCircle} size="24" class="text-immich-error" title={$t('error')} />
       {:else if uploadAsset.state === UploadState.DUPLICATED}
-        <Icon path={mdiAlertCircle} size="24" class="text-immich-warning" title={$t('asset_skipped')} />
+        {#if uploadAsset.isTrashed}
+          <Icon path={mdiTrashCan} size="24" class="text-gray-500" title={$t('asset_skipped_in_trash')} />
+        {:else}
+          <Icon path={mdiAlertCircle} size="24" class="text-immich-warning" title={$t('asset_skipped')} />
+        {/if}
       {:else if uploadAsset.state === UploadState.DONE}
         <Icon path={mdiCheckCircle} size="24" class="text-immich-success" title={$t('asset_uploaded')} />
       {/if}
@@ -56,7 +69,7 @@
     {#if uploadAsset.state === UploadState.DUPLICATED && uploadAsset.assetId}
       <div class="flex items-center justify-between gap-1">
         <a
-          href="{AppRoute.PHOTOS}/{uploadAsset.assetId}"
+          href={asLink(uploadAsset)}
           target="_blank"
           rel="noopener noreferrer"
           class=""
@@ -65,16 +78,16 @@
         >
           <Icon path={mdiOpenInNew} size="20" />
         </a>
-        <button type="button" on:click={() => handleDismiss(uploadAsset)} class="" aria-hidden="true" tabindex={-1}>
+        <button type="button" onclick={() => handleDismiss(uploadAsset)} class="" aria-hidden="true" tabindex={-1}>
           <Icon path={mdiClose} size="20" />
         </button>
       </div>
     {:else if uploadAsset.state === UploadState.ERROR}
       <div class="flex items-center justify-between gap-1">
-        <button type="button" on:click={() => handleRetry(uploadAsset)} class="" aria-hidden="true" tabindex={-1}>
+        <button type="button" onclick={() => handleRetry(uploadAsset)} class="" aria-hidden="true" tabindex={-1}>
           <Icon path={mdiRestart} size="20" />
         </button>
-        <button type="button" on:click={() => handleDismiss(uploadAsset)} class="" aria-hidden="true" tabindex={-1}>
+        <button type="button" onclick={() => handleDismiss(uploadAsset)} class="" aria-hidden="true" tabindex={-1}>
           <Icon path={mdiClose} size="20" />
         </button>
       </div>
@@ -83,7 +96,7 @@
 
   {#if uploadAsset.state === UploadState.STARTED}
     <div class="text-black relative mt-[5px] h-[15px] w-full rounded-md bg-gray-300 dark:bg-immich-dark-gray">
-      <div class="h-[15px] rounded-md bg-immich-primary transition-all" style={`width: ${uploadAsset.progress}%`} />
+      <div class="h-[15px] rounded-md bg-immich-primary transition-all" style={`width: ${uploadAsset.progress}%`}></div>
       <p class="absolute top-0 h-full w-full text-center text-[10px]">
         {#if uploadAsset.message}
           {uploadAsset.message}

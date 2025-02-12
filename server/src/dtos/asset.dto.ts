@@ -15,7 +15,7 @@ import {
 } from 'class-validator';
 import { BulkIdsDto } from 'src/dtos/asset-ids.response.dto';
 import { AssetType } from 'src/enum';
-import { AssetStats } from 'src/interfaces/asset.interface';
+import { AssetStats } from 'src/repositories/asset.repository';
 import { Optional, ValidateBoolean, ValidateUUID } from 'src/validation';
 
 export class DeviceIdDto {
@@ -52,7 +52,7 @@ export class UpdateAssetBase {
   @Optional()
   @IsInt()
   @Max(5)
-  @Min(0)
+  @Min(-1)
   rating?: number;
 }
 
@@ -68,6 +68,9 @@ export class UpdateAssetDto extends UpdateAssetBase {
   @Optional()
   @IsString()
   description?: string;
+
+  @ValidateUUID({ optional: true, nullable: true })
+  livePhotoVideoId?: string | null;
 }
 
 export class RandomAssetsDto {
@@ -89,8 +92,9 @@ export class AssetIdsDto {
 }
 
 export enum AssetJobName {
-  REGENERATE_THUMBNAIL = 'regenerate-thumbnail',
+  REFRESH_FACES = 'refresh-faces',
   REFRESH_METADATA = 'refresh-metadata',
+  REGENERATE_THUMBNAIL = 'regenerate-thumbnail',
   TRANSCODE_VIDEO = 'transcode-video',
 }
 

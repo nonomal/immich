@@ -1,10 +1,12 @@
-import { IMediaRepository } from 'src/interfaces/media.interface';
+import { MediaRepository } from 'src/repositories/media.repository';
+import { RepositoryInterface } from 'src/types';
 import { Mocked, vitest } from 'vitest';
 
-export const newMediaRepositoryMock = (): Mocked<IMediaRepository> => {
+export const newMediaRepositoryMock = (): Mocked<RepositoryInterface<MediaRepository>> => {
   return {
-    generateThumbnail: vitest.fn(),
-    generateThumbhash: vitest.fn(),
+    generateThumbnail: vitest.fn().mockImplementation(() => Promise.resolve()),
+    generateThumbhash: vitest.fn().mockResolvedValue(Buffer.from('')),
+    decodeImage: vitest.fn().mockResolvedValue({ data: Buffer.from(''), info: {} }),
     extract: vitest.fn().mockResolvedValue(false),
     probe: vitest.fn(),
     transcode: vitest.fn(),

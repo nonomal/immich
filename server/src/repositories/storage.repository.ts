@@ -1,26 +1,43 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import archiver from 'archiver';
 import chokidar, { WatchOptions } from 'chokidar';
 import { escapePath, glob, globStream } from 'fast-glob';
-import { constants, createReadStream, existsSync, mkdirSync } from 'node:fs';
+import { constants, createReadStream, createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { Readable, Writable } from 'node:stream';
 import { CrawlOptionsDto, WalkOptionsDto } from 'src/dtos/library.dto';
-import { ILoggerRepository } from 'src/interfaces/logger.interface';
-import {
-  DiskUsage,
-  IStorageRepository,
-  ImmichReadStream,
-  ImmichZipStream,
-  WatchEvents,
-} from 'src/interfaces/storage.interface';
-import { Instrumentation } from 'src/utils/instrumentation';
+import { LoggingRepository } from 'src/repositories/logging.repository';
 import { mimeTypes } from 'src/utils/mime-types';
 
-@Instrumentation()
+export interface WatchEvents {
+  onReady(): void;
+  onAdd(path: string): void;
+  onChange(path: string): void;
+  onUnlink(path: string): void;
+  onError(error: Error): void;
+}
+
+export interface ImmichReadStream {
+  stream: Readable;
+  type?: string;
+  length?: number;
+}
+
+export interface ImmichZipStream extends ImmichReadStream {
+  addFile: (inputPath: string, filename: string) => void;
+  finalize: () => Promise<void>;
+}
+
+export interface DiskUsage {
+  available: number;
+  free: number;
+  total: number;
+}
+
 @Injectable()
-export class StorageRepository implements IStorageRepository {
-  constructor(@Inject(ILoggerRepository) private logger: ILoggerRepository) {
+export class StorageRepository {
+  constructor(private logger: LoggingRepository) {
     this.logger.setContext(StorageRepository.name);
   }
 
@@ -40,8 +57,20 @@ export class StorageRepository implements IStorageRepository {
     return fs.stat(filepath);
   }
 
-  writeFile(filepath: string, buffer: Buffer) {
-    return fs.writeFile(filepath, buffer);
+  createFile(filepath: string, buffer: Buffer) {
+    return fs.writeFile(filepath, buffer, { flag: 'wx' });
+  }
+
+  createWriteStream(filepath: string): Writable {
+    return createWriteStream(filepath, { flags: 'w' });
+  }
+
+  createOrOverwriteFile(filepath: string, buffer: Buffer) {
+    return fs.writeFile(filepath, buffer, { flag: 'w' });
+  }
+
+  overwriteFile(filepath: string, buffer: Buffer) {
+    return fs.writeFile(filepath, buffer, { flag: 'r+' });
   }
 
   rename(source: string, target: string) {
@@ -148,7 +177,9 @@ export class StorageRepository implements IStorageRepository {
       return Promise.resolve([]);
     }
 
-    return glob(this.asGlob(pathsToCrawl), {
+    const globbedPaths = pathsToCrawl.map((path) => this.asGlob(path));
+
+    return glob(globbedPaths, {
       absolute: true,
       caseSensitiveMatch: false,
       onlyFiles: true,
@@ -164,7 +195,9 @@ export class StorageRepository implements IStorageRepository {
       return emptyGenerator();
     }
 
-    const stream = globStream(this.asGlob(pathsToCrawl), {
+    const globbedPaths = pathsToCrawl.map((path) => this.asGlob(path));
+
+    const stream = globStream(globbedPaths, {
       absolute: true,
       caseSensitiveMatch: false,
       onlyFiles: true,
@@ -198,10 +231,9 @@ export class StorageRepository implements IStorageRepository {
     return () => watcher.close();
   }
 
-  private asGlob(pathsToCrawl: string[]): string {
-    const escapedPaths = pathsToCrawl.map((path) => escapePath(path));
-    const base = escapedPaths.length === 1 ? escapedPaths[0] : `{${escapedPaths.join(',')}}`;
+  private asGlob(pathToCrawl: string): string {
+    const escapedPath = escapePath(pathToCrawl).replaceAll('"', '["]').replaceAll("'", "[']").replaceAll('`', '[`]');
     const extensions = `*{${mimeTypes.getSupportedFileExtensions().join(',')}}`;
-    return `${base}/**/${extensions}`;
+    return `${escapedPath}/**/${extensions}`;
   }
 }

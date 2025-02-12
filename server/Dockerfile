@@ -1,5 +1,5 @@
 # dev build
-FROM ghcr.io/immich-app/base-server-dev:20240903@sha256:ca18e2805ec8ddcf0ac7734a6eaf6d9a08bd3a14218bf0dbdbe865d83117190f AS dev
+FROM ghcr.io/immich-app/base-server-dev:20250211@sha256:6ae577a6518e1ccca973db16955f4d79b01cac3ae122759ccb1c17bf6c330ba9 AS dev
 
 RUN apt-get install --no-install-recommends -yqq tini
 WORKDIR /usr/src/app
@@ -9,7 +9,6 @@ RUN npm ci && \
   # they're marked as optional dependencies, so we need to copy them manually after pruning
   rm -rf node_modules/@img/sharp-libvips* && \
   rm -rf node_modules/@img/sharp-linuxmusl-x64
-COPY server .
 ENV PATH="${PATH}:/usr/src/app/bin" \
   IMMICH_ENV=development \
   NVIDIA_DRIVER_CAPABILITIES=all \
@@ -19,13 +18,14 @@ ENTRYPOINT ["tini", "--", "/bin/sh"]
 
 FROM dev AS prod
 
+COPY server .
 RUN npm run build
 RUN npm prune --omit=dev --omit=optional
 COPY --from=dev /usr/src/app/node_modules/@img ./node_modules/@img
 COPY --from=dev /usr/src/app/node_modules/exiftool-vendored.pl ./node_modules/exiftool-vendored.pl
 
 # web build
-FROM node:20.17.0-alpine3.20@sha256:1a526b97cace6b4006256570efa1a29cd1fe4b96a5301f8d48e87c5139438a45 AS web
+FROM node:22.13.1-alpine3.20@sha256:c52e20859a92b3eccbd3a36c5e1a90adc20617d8d421d65e8a622e87b5dac963 AS web
 
 WORKDIR /usr/src/open-api/typescript-sdk
 COPY open-api/typescript-sdk/package*.json open-api/typescript-sdk/tsconfig*.json ./
@@ -37,11 +37,12 @@ WORKDIR /usr/src/app
 COPY web/package*.json web/svelte.config.js ./
 RUN npm ci
 COPY web ./
+COPY i18n ../i18n
 RUN npm run build
 
 
 # prod build
-FROM ghcr.io/immich-app/base-server-prod:20240903@sha256:d0d170ceeee7ef6c7b62b5d927820d74c14a9893f3e6285c1b9df45b33951b09
+FROM ghcr.io/immich-app/base-server-prod:20250211@sha256:879cfe3d2afd4b7bdb211f694f99b6c0679a8bbd3e96964ad6c878f8471d63ea
 
 WORKDIR /usr/src/app
 ENV NODE_ENV=production \
@@ -76,7 +77,7 @@ ENV IMMICH_SOURCE_COMMIT=${BUILD_SOURCE_COMMIT}
 ENV IMMICH_SOURCE_URL=https://github.com/immich-app/immich/commit/${BUILD_SOURCE_COMMIT}
 
 VOLUME /usr/src/app/upload
-EXPOSE 3001
+EXPOSE 2283
 ENTRYPOINT ["tini", "--", "/bin/bash"]
 CMD ["start.sh"]
 

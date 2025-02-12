@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
 
+echo "Initializing Immich ML $IMMICH_SOURCE_REF"
+
 lib_path="/usr/lib/$(arch)-linux-gnu/libmimalloc.so.2"
 # mimalloc seems to increase memory usage dramatically with openvino, need to investigate
 if ! [ "$DEVICE" = "openvino" ]; then
@@ -17,6 +19,7 @@ fi
 
 gunicorn app.main:app \
 	-k app.config.CustomUvicornWorker \
+	-c gunicorn_conf.py \
 	-b "$IMMICH_HOST":"$IMMICH_PORT" \
 	-w "$MACHINE_LEARNING_WORKERS" \
 	-t "$MACHINE_LEARNING_WORKER_TIMEOUT" \

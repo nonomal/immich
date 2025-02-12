@@ -1,16 +1,12 @@
-import { IMetadataRepository } from 'src/interfaces/metadata.interface';
+import { MetadataRepository } from 'src/repositories/metadata.repository';
+import { RepositoryInterface } from 'src/types';
 import { Mocked, vitest } from 'vitest';
 
-export const newMetadataRepositoryMock = (): Mocked<IMetadataRepository> => {
+export const newMetadataRepositoryMock = (): Mocked<RepositoryInterface<MetadataRepository>> => {
   return {
     teardown: vitest.fn(),
     readTags: vitest.fn(),
     writeTags: vitest.fn(),
     extractBinaryTag: vitest.fn(),
-    getCameraMakes: vitest.fn(),
-    getCameraModels: vitest.fn(),
-    getCities: vitest.fn(),
-    getCountries: vitest.fn(),
-    getStates: vitest.fn(),
   };
 };

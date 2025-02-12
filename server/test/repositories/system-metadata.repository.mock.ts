@@ -1,12 +1,10 @@
-import { SystemConfigCore } from 'src/cores/system-config.core';
-import { ISystemMetadataRepository } from 'src/interfaces/system-metadata.interface';
+import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository';
+import { RepositoryInterface } from 'src/types';
+import { clearConfigCache } from 'src/utils/config';
 import { Mocked, vitest } from 'vitest';
 
-export const newSystemMetadataRepositoryMock = (reset = true): Mocked<ISystemMetadataRepository> => {
-  if (reset) {
-    SystemConfigCore.reset();
-  }
-
+export const newSystemMetadataRepositoryMock = (): Mocked<RepositoryInterface<SystemMetadataRepository>> => {
+  clearConfigCache();
   return {
     get: vitest.fn() as any,
     set: vitest.fn(),

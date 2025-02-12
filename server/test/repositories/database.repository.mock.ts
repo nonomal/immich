@@ -1,15 +1,17 @@
-import { IDatabaseRepository } from 'src/interfaces/database.interface';
+import { DatabaseRepository } from 'src/repositories/database.repository';
+import { RepositoryInterface } from 'src/types';
 import { Mocked, vitest } from 'vitest';
 
-export const newDatabaseRepositoryMock = (): Mocked<IDatabaseRepository> => {
+export const newDatabaseRepositoryMock = (): Mocked<RepositoryInterface<DatabaseRepository>> => {
   return {
+    init: vitest.fn(),
+    shutdown: vitest.fn(),
     reconnect: vitest.fn(),
     getExtensionVersion: vitest.fn(),
     getExtensionVersionRange: vitest.fn(),
     getPostgresVersion: vitest.fn().mockResolvedValue('14.10 (Debian 14.10-1.pgdg120+1)'),
     getPostgresVersionRange: vitest.fn().mockReturnValue('>=14.0.0'),
     createExtension: vitest.fn().mockResolvedValue(void 0),
-    updateExtension: vitest.fn(),
     updateVectorExtension: vitest.fn(),
     reindex: vitest.fn(),
     shouldReindex: vitest.fn(),
